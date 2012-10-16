@@ -1,71 +1,14 @@
 #!/usr/bin/env perl
 use strict;
 use warnings;
-use Lucy;
-use Search::Tools;
+use LucyX::Suggester;
 
 my $usage = "$0 query path/to/index\n";
-
 die $usage unless @ARGV;
 
-my $query        = shift(@ARGV);
-my $qparser      = Search::Tools->parser();
-my $spellchecker = Search::Tools->spellcheck( query_parser => $qparser, );
-my $suggestions  = $spellchecker->suggest($query);
-my %terms;
-for my $s (@$suggestions) {
-    if ( !$s->{suggestions} ) {
-        $terms{ $s->{word} }++;
-    }
-    else {
-        for my $suggest ( @{ $s->{suggestions} } ) {
-            $terms{$suggest}++;
-        }
-    }
-}
-
-# must analyze each query term and suggestion
-# per-field, which we cache for performance
-my %analyzed;
-
-sub analyze_terms {
-    my ( $schema, $field, $analyzed, $terms ) = @_;
-
-    #warn "field=$field";
-    return if exists $analyzed->{$field};
-    my $analyzer = $schema->fetch_analyzer($field);
-    for my $t ( keys %$terms ) {
-        my $baked = $analyzer ? $analyzer->split($t) : $t;
-        $analyzed->{$field}->{$baked} = $t;
-    }
-}
-
-# suggestions
-my %matches;
-
-for my $invindex (@ARGV) {
-    my $reader      = Lucy::Index::IndexReader->open( index => $invindex );
-    my $schema      = $reader->get_schema();
-    my $fields      = $schema->all_fields();
-    my $seg_readers = $reader->seg_readers;
-    for my $seg_reader (@$seg_readers) {
-        my $lex_reader = $seg_reader->obtain('Lucy::Index::LexiconReader');
-        for my $field (@$fields) {
-            analyze_terms( $schema, $field, \%analyzed, \%terms );
-            my $lexicon = $lex_reader->lexicon( field => $field );
-            while ( $lexicon && $lexicon->next ) {
-                my $term = $lexicon->get_term;
-                if ( grep { $term =~ m/^\Q$_/ } keys %terms ) {
-                    $matches{$term} += $lex_reader->doc_freq(
-                        field => $field,
-                        term  => $term
-                    );
-                }
-            }
-        }
-    }
-}
-
-for my $m ( sort { $matches{$b} <=> $matches{$a} } keys %matches ) {
+my $query     = shift(@ARGV);
+my $suggester = LucyX::Suggester->new( indexes => [@ARGV] );
+my $matches   = $suggester->suggest($query);
+for my $m (@$matches) {
     printf( "%s\n", $m );
 }
