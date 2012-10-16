@@ -3,13 +3,14 @@ use warnings;
 use inc::Module::Install;
 use 5.008003;
 
-name 'LucyX::Suggester';
+name 'LucyX-Suggester';
 all_from 'lib/LucyX/Suggester.pm';
 
 requires 'Test::More'    => 0;
 requires 'Lucy'          => '0.003002';
 requires 'Search::Tools' => '0.83';
 requires 'Text::Aspell'  => 0;
+requires 'Data::Dump'    => 0;
 
 perl_version '5.8.3';
 license 'http://dev.perl.org/licenses/';
