@@ -1,4 +1,4 @@
-lucyx-suggester
+LucyX::Suggester
 ===============
 
 Suggest terms for Apache Lucy search
