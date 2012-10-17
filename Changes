@@ -7,7 +7,8 @@ Revision history for LucyX-Suggester
     * refactor internal optimizations, fixing bug with multiple terms starting
       with the same letter.
 
-
+0.003   17 Oct 2012
+    * remove undeclared dependency on Search::Query::Dialect::Lucy
 
  
 

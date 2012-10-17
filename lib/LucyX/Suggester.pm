@@ -6,7 +6,7 @@ use Data::Dump qw( dump );
 use Search::Tools;
 use Lucy;
 
-our $VERSION = '0.002';
+our $VERSION = '0.003';
 
 =head1 NAME
 
@@ -111,7 +111,6 @@ sub suggest {
     if ( !$spellchecker ) {
         my $qparser = Search::Tools->parser(
             debug         => $debug,
-            query_dialect => 'Lucy',
         );
         $spellchecker = Search::Tools->spellcheck(
             debug        => $debug,
