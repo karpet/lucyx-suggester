@@ -1,22 +1,44 @@
 #!/usr/bin/env perl
 use strict;
 use warnings;
-use Test::More tests => 3;
+use Test::More tests => 5;
 use FindBin;
 use LucyX::Suggester;
+use Data::Dump qw( dump );
 
 my $idx = "$FindBin::Bin/../index.swish";
 SKIP: {
     if ( !-d $idx ) {
-        skip "create an index at $idx", 3;
+        skip "create an index at $idx", 5;
     }
 
-    ok( my $suggester = LucyX::Suggester->new( indexes => [$idx] ),
-        "new Suggester" );
+    ok( my $suggester = LucyX::Suggester->new(
+            fields  => ['swishdefault', 'swishtitle'],
+            indexes => [$idx]
+        ),
+        "new Suggester"
+    );
 
-    ok( my $suggestions = $suggester->suggest('quiK brwn fx'),
+    ok( my $suggestions = $suggester->suggest('quiK brwn fx running'),
         "get suggestions" );
 
-    is_deeply( $suggestions, [qw( fox brown quick )], "got suggestions" );
+    #dump($suggestions);
+
+    is_deeply(
+        $suggestions,
+        [qw( quirk brawn run fox brown quick )],
+        "got suggestions"
+    );
+
+    ok( $suggestions = $suggester->suggest( 'quiK brwn fx running', 0 ),
+        "suggest() with no optimize" );
+
+    #dump($suggestions);
+
+    is_deeply(
+        $suggestions,
+        [qw( quirk brawn run fox brown quick )],
+        "got suggestions"
+    );
 
 }
