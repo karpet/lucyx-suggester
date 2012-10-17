@@ -3,5 +3,11 @@ Revision history for LucyX-Suggester
 0.001   16 Oct 2012
     * initial release
 
+0.002   16 Oct 2012
+    * refactor internal optimizations, fixing bug with multiple terms starting
+      with the same letter.
+
+
+
  
 

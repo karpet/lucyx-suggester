@@ -22,22 +22,22 @@ SKIP: {
     ok( my $suggestions = $suggester->suggest('quiK brwn fx running'),
         "get suggestions" );
 
-    #dump($suggestions);
+    dump($suggestions);
 
     is_deeply(
         $suggestions,
-        [qw( quirk brawn run fox brown quick )],
+        [qw( brawn quirk brown fox quick run )],
         "got suggestions"
     );
 
     ok( $suggestions = $suggester->suggest( 'quiK brwn fx running', 0 ),
         "suggest() with no optimize" );
 
-    #dump($suggestions);
+    dump($suggestions);
 
     is_deeply(
         $suggestions,
-        [qw( quirk brawn run fox brown quick )],
+        [qw( brawn quirk brown fox quick run )],
         "got suggestions"
     );
 

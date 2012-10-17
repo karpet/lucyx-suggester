@@ -6,7 +6,7 @@ use Data::Dump qw( dump );
 use Search::Tools;
 use Lucy;
 
-our $VERSION = '0.001';
+our $VERSION = '0.002';
 
 =head1 NAME
 
@@ -20,9 +20,8 @@ LucyX::Suggester - suggest terms for Apache Lucy search
    indexes      => $list_of_indexes,
    spellcheck   => $search_tools_spellcheck,
    limit        => 10,
-   debug        => 0,
  );
- my $suggestions = $suggester->suggest('quiK brwn fx');
+ my $suggestions = $suggester->suggest('quiK brwn fox');
 
 =head1 DESCRIPTION
 
@@ -69,7 +68,7 @@ sub new {
     my $indexes    = delete $args{indexes} or croak "indexes required";
     my $spellcheck = delete $args{spellcheck};
     my $limit      = delete $args{limit} || 10;
-    my $debug      = delete $args{debug} || 0;
+    my $debug      = delete $args{debug} || $ENV{LUCYX_DEBUG} || 0;
     if (%args) {
         croak "Too many arguments to new(): " . dump( \%args );
     }
@@ -110,7 +109,10 @@ sub suggest {
 
     my $spellchecker = $self->{spellcheck};
     if ( !$spellchecker ) {
-        my $qparser = Search::Tools->parser( debug => $debug, );
+        my $qparser = Search::Tools->parser(
+            debug         => $debug,
+            query_dialect => 'Lucy',
+        );
         $spellchecker = Search::Tools->spellcheck(
             debug        => $debug,
             query_parser => $qparser,
@@ -159,92 +161,58 @@ INDEX: for my $invindex ( @{ $self->{indexes} } ) {
 
                 # sort in order to seek() below.
                 my @to_check = sort keys %{ $analyzed{$field} };
-                my @initials;
-                my %seen;
-                for my $term (@to_check) {
-                    my ($i) = ( $term =~ m/^(.)/ );
-                    next if $seen{$i}++;
-                    push @initials, $i;
-                }
 
                 $debug and warn "$field=" . dump \@to_check;
-                $debug and warn "$field=" . dump \@initials;
 
                 my $lexicon = $lex_reader->lexicon( field => $field );
                 next FIELD unless $lexicon;
 
-                # skip to the first term's area
-                if ($optimize) {
-                    $debug and warn "seek($initials[0])";
-                    $lexicon->seek( shift @initials );
-                }
+            CHECK: for my $check_term (@to_check) {
 
-                my $last_initial = '';
-
-            TERM: while ($lexicon) {
-
-                    my $term = $lexicon->get_term;
-                    my ($i) = ( $term =~ m/^(.)/ );
-                    if ( $optimize and $i ) {
-                        if ( $i ne $last_initial ) {
-                            $last_initial = $i;
-                            if ( @initials and $last_initial eq $initials[0] )
-                            {
-                                shift @initials;
-                            }
-                            elsif ( !@initials ) {
-
-                                # this term differs from last one,
-                                # and we've exhausted our list,
-                                # so just quit.
-                                last TERM;
-                            }
-                        }
-                        else {
-                            if ( !@initials ) {
-                                last TERM;
-                            }
-                        }
-                    }
-
-                    $debug and warn "eval term=$term [$last_initial]";
-
-                    # TODO phrases?
-                    # TODO better weighting than simple freq?
-
-                    if ( grep { $term =~ m/^\Q$_/ } @to_check ) {
-                        my $freq = $lex_reader->doc_freq(
-                            field => $field,
-                            term  => $term,
-                        );
-                        $debug and warn "ok term=$term [$freq]";
-                        $matches{$term} += $freq;
-
-                        # abort everything if we've hit our limit
-                        if ( scalar( keys %matches ) >= $self->{limit} ) {
-                            last INDEX;
-                        }
-
-                        if ( $lexicon->next ) {
-                            next TERM;
-                        }
-                        else {
-                            last TERM;
-                        }
-                    }
-
-                    # if we've exhausted this area of the lexicon
-                    # for our to_check list, skip to the next area.
-                    if (    $optimize
-                        and @initials
-                        and $term !~ m/^$initials[0]/ )
-                    {
-                        $debug and warn "seek($initials[0])";
-                        $lexicon->seek( shift @initials );
-                        next TERM;
+                    my ($check_initial) = ( $check_term =~ m/^(.)/ );
+                    if ($optimize) {
+                        $debug and warn "seek($check_term)";
+                        $lexicon->seek($check_term);
                     }
                     else {
+                        $lexicon->reset();
+                    }
+
+                TERM: while ( defined( my $term = $lexicon->get_term ) ) {
+
+                        $debug and warn "$check_term -> $term";
+
+                        if ($optimize) {
+                            my ($initial) = ( $term =~ m/^(.)/ );
+                            if ( $initial and $initial gt $check_initial ) {
+                                $debug
+                                    and warn
+                                    "  reset: initial=$initial > check_initial=$check_initial";
+                                $lexicon->reset();    # reset to start
+                                next CHECK;
+                            }
+                        }
+
+                        # TODO phrases?
+                        # TODO better weighting than simple freq?
+
+                        if ( $term =~ m/^\Q$check_term/ ) {
+                            my $freq = $lex_reader->doc_freq(
+                                field => $field,
+                                term  => $term,
+                            );
+                            $debug and warn "ok term=$term [$freq]";
+                            $matches{$term} += $freq;
+
+                            # abort everything if we've hit our limit
+                            if ( scalar( keys %matches ) >= $self->{limit} ) {
+                                last INDEX;
+                            }
+
+                        }
+
                         last TERM unless $lexicon->next;
+
                     }
                 }
             }
@@ -253,7 +221,10 @@ INDEX: for my $invindex ( @{ $self->{indexes} } ) {
 
     $debug and warn "matches=" . dump( \%matches );
 
-    return [ sort { $matches{$b} <=> $matches{$a} } keys %matches ];
+    return [
+        sort { $matches{$b} <=> $matches{$a} || $a cmp $b }
+            keys %matches
+    ];
 }
 
 sub _analyze_terms {
@@ -264,6 +235,7 @@ sub _analyze_terms {
     my $analyzer = $schema->fetch_analyzer($field);
     for my $t ( keys %$terms ) {
         my $baked = $analyzer ? $analyzer->split($t)->[0] : $t;
+        next if length $baked == 1;    # too much noise
         $analyzed->{$field}->{$baked} = $t;
     }
 }
