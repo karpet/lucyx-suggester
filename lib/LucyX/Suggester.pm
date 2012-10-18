@@ -47,7 +47,7 @@ List of fields to limit Lexicon scans to.
 
 List of indexes to search within.
 
-=item spellchek I<search_tools_spellcheck>
+=item spellcheck I<search_tools_spellcheck>
 
 An instance of L<Search::Tools::SpellCheck>. Set
 this to indicate custom values for language, dictionary,
