@@ -10,5 +10,7 @@ Revision history for LucyX-Suggester
 0.003   17 Oct 2012
     * remove undeclared dependency on Search::Query::Dialect::Lucy
 
+0.004   xxx
+    * internal refactors for speed improvements
  
 

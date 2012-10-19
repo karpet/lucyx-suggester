@@ -6,7 +6,7 @@ use Data::Dump qw( dump );
 use Search::Tools;
 use Lucy;
 
-our $VERSION = '0.003';
+our $VERSION = '0.003_01';
 
 =head1 NAME
 
