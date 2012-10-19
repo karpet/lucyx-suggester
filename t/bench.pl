@@ -7,7 +7,7 @@ use LucyX::Suggester;
 my $s = LucyX::Suggester->new( indexes => [@ARGV] );
 
 cmpthese(
-    100,
+    1000,
     {   'non' => sub {
             $s->suggest( 'quiK brwn fx running', 0 );
         },

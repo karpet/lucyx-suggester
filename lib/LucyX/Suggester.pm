@@ -109,9 +109,7 @@ sub suggest {
 
     my $spellchecker = $self->{spellcheck};
     if ( !$spellchecker ) {
-        my $qparser = Search::Tools->parser(
-            debug         => $debug,
-        );
+        my $qparser = Search::Tools->parser( debug => $debug, );
         $spellchecker = Search::Tools->spellcheck(
             debug        => $debug,
             query_parser => $qparser,
@@ -168,7 +166,7 @@ INDEX: for my $invindex ( @{ $self->{indexes} } ) {
 
             CHECK: for my $check_term (@to_check) {
 
-                    my ($check_initial) = ( $check_term =~ m/^(.)/ );
+                    my $check_initial = substr( $check_term, 0, 1 );
                     if ($optimize) {
                         $debug and warn "seek($check_term)";
                         $lexicon->seek($check_term);
@@ -182,12 +180,13 @@ INDEX: for my $invindex ( @{ $self->{indexes} } ) {
                         $debug and warn "$check_term -> $term";
 
                         if ($optimize) {
-                            my ($initial) = ( $term =~ m/^(.)/ );
+                            my $initial = substr( $term, 0, 1 );
                             if ( $initial and $initial gt $check_initial ) {
                                 $debug
                                     and warn
                                     "  reset: initial=$initial > check_initial=$check_initial";
-                                $lexicon->reset();    # reset to start
+
+                                #$lexicon->reset();    # reset to start
                                 next CHECK;
                             }
                         }
@@ -195,7 +194,7 @@ INDEX: for my $invindex ( @{ $self->{indexes} } ) {
                         # TODO phrases?
                         # TODO better weighting than simple freq?
 
-                        if ( $term =~ m/^\Q$check_term/ ) {
+                        if ( index( $term, $check_term, 0 ) == 0 ) {
                             my $freq = $lex_reader->doc_freq(
                                 field => $field,
                                 term  => $term,
@@ -208,6 +207,14 @@ INDEX: for my $invindex ( @{ $self->{indexes} } ) {
                                 last INDEX;
                             }
 
+                        }
+                        elsif ($optimize) {
+                            $debug
+                                and warn
+                                "No match - skipping to next CHECK term";
+
+                            #$lexicon->reset();
+                            next CHECK;
                         }
 
                         last TERM unless $lexicon->next;
