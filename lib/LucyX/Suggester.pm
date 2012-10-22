@@ -57,6 +57,11 @@ and other params to L<Search::Tools::SpellCheck>.
 
 Maximum number of suggestions to return. Defaults to 10.
 
+=item use_regex 1|0
+
+Use a simple regex when comparing terms. Defaults to false (0),
+preferring index() over a regex for performance reasons.
+
 =back
 
 =cut
@@ -69,6 +74,7 @@ sub new {
     my $spellcheck = delete $args{spellcheck};
     my $limit      = delete $args{limit} || 10;
     my $debug      = delete $args{debug} || $ENV{LUCYX_DEBUG} || 0;
+    my $use_regex  = delete $args{use_regex} || 0;
     if (%args) {
         croak "Too many arguments to new(): " . dump( \%args );
     }
@@ -81,6 +87,7 @@ sub new {
             spellcheck => $spellcheck,
             limit      => $limit,
             debug      => $debug,
+            use_regex  => $use_regex,
         },
         $class
     );
@@ -99,10 +106,9 @@ Returns arrayref of terms that match I<query>.
 #
 
 sub suggest {
-    my $self     = shift;
-    my $query    = shift;
-    my $optimize = shift;
-    $optimize = 1 unless defined $optimize;
+    my $self  = shift;
+    my $query = shift;
+
     croak "query required" unless defined $query;
 
     my $debug = $self->{debug};
@@ -138,6 +144,7 @@ sub suggest {
     my %matches;
 
     my @my_fields = @{ $self->{fields} };
+    my $use_regex = $self->{use_regex};
 
 INDEX: for my $invindex ( @{ $self->{indexes} } ) {
         my $reader = Lucy::Index::IndexReader->open( index => $invindex );
@@ -167,34 +174,27 @@ INDEX: for my $invindex ( @{ $self->{indexes} } ) {
             CHECK: for my $check_term (@to_check) {
 
                     my $check_initial = substr( $check_term, 0, 1 );
-                    if ($optimize) {
-                        $debug and warn "seek($check_term)";
-                        $lexicon->seek($check_term);
-                    }
-                    else {
-                        $lexicon->reset();
-                    }
+
+                    $debug and warn "seek($check_term)";
+                    $lexicon->seek($check_term);
 
                 TERM: while ( defined( my $term = $lexicon->get_term ) ) {
 
                         $debug and warn "$check_term -> $term";
 
-                        if ($optimize) {
-                            my $initial = substr( $term, 0, 1 );
-                            if ( $initial and $initial gt $check_initial ) {
-                                $debug
-                                    and warn
-                                    "  reset: initial=$initial > check_initial=$check_initial";
-
-                                #$lexicon->reset();    # reset to start
-                                next CHECK;
-                            }
+                        my $initial = substr( $term, 0, 1 );
+                        if ( $initial and $initial gt $check_initial ) {
+                            $debug
+                                and warn
+                                "  reset: initial=$initial > check_initial=$check_initial";
+                            next CHECK;
                         }
 
-                        # TODO phrases?
                         # TODO better weighting than simple freq?
 
-                        if ( index( $term, $check_term, 0 ) == 0 ) {
+                        if ( !$use_regex
+                            && index( $term, $check_term, 0 ) == 0 )
+                        {
                             my $freq = $lex_reader->doc_freq(
                                 field => $field,
                                 term  => $term,
@@ -208,12 +208,23 @@ INDEX: for my $invindex ( @{ $self->{indexes} } ) {
                             }
 
                         }
-                        elsif ($optimize) {
+                        elsif ( $use_regex && $term =~ m/\b\Q$check_term/ ) {
+                            my $freq = $lex_reader->doc_freq(
+                                field => $field,
+                                term  => $term,
+                            );
+                            $debug and warn "ok term=$term [$freq]";
+                            $matches{$term} += $freq;
+
+                            # abort everything if we've hit our limit
+                            if ( scalar( keys %matches ) >= $self->{limit} ) {
+                                last INDEX;
+                            }
+                        }
+                        else {
                             $debug
                                 and warn
                                 "No match - skipping to next CHECK term";
-
-                            #$lexicon->reset();
                             next CHECK;
                         }
 
