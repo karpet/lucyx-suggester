@@ -12,5 +12,6 @@ Revision history for LucyX-Suggester
 
 0.004   xxx
     * internal refactors for speed improvements
- 
+    * add use_regex, max_length options 
+    * boost match scores for phrases
 

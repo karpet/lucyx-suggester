@@ -4,15 +4,16 @@ use warnings;
 use Benchmark qw(:all);
 use LucyX::Suggester;
 
-my $s = LucyX::Suggester->new( indexes => [@ARGV] );
+my $ix = LucyX::Suggester->new( indexes => [@ARGV] );
+my $re = LucyX::Suggester->new( indexes => [@ARGV], use_regex => 1 );
 
 cmpthese(
     1000,
-    {   'non' => sub {
-            $s->suggest( 'quiK brwn fx running', 0 );
+    {   'regex' => sub {
+            $ix->suggest('quiK brwn fx running');
         },
-        'optimized' => sub {
-            $s->suggest( 'quiK brwn fx running', 1 );
+        'index' => sub {
+            $re->suggest('quiK brwn fx running');
         },
     }
 );

@@ -20,6 +20,8 @@ LucyX::Suggester - suggest terms for Apache Lucy search
    indexes      => $list_of_indexes,
    spellcheck   => $search_tools_spellcheck,
    limit        => 10,
+   use_regex    => 0,
+   max_length   => 64,
  );
  my $suggestions = $suggester->suggest('quiK brwn fox');
 
@@ -60,7 +62,13 @@ Maximum number of suggestions to return. Defaults to 10.
 =item use_regex 1|0
 
 Use a simple regex when comparing terms. Defaults to false (0),
-preferring index() over a regex for performance reasons.
+preferring index(). If your analyzer results in terms containing
+multiple words (e.g. phrases) then B<use_regex> is probably what you want.
+
+=item max_length I<n>
+
+Set a max term length beyond which suggestions are trimmed
+with substr(). Default is 64 characters. Set to 0 to disable.
 
 =back
 
@@ -75,6 +83,9 @@ sub new {
     my $limit      = delete $args{limit} || 10;
     my $debug      = delete $args{debug} || $ENV{LUCYX_DEBUG} || 0;
     my $use_regex  = delete $args{use_regex} || 0;
+    my $max_length = delete $args{max_length};
+    $max_length = 64 unless defined $max_length;
+
     if (%args) {
         croak "Too many arguments to new(): " . dump( \%args );
     }
@@ -88,6 +99,7 @@ sub new {
             limit      => $limit,
             debug      => $debug,
             use_regex  => $use_regex,
+            max_length => $max_length,
         },
         $class
     );
@@ -145,6 +157,7 @@ sub suggest {
 
     my @my_fields = @{ $self->{fields} };
     my $use_regex = $self->{use_regex};
+    my $maxl      = $self->{max_length};
 
 INDEX: for my $invindex ( @{ $self->{indexes} } ) {
         my $reader = Lucy::Index::IndexReader->open( index => $invindex );
@@ -175,12 +188,12 @@ INDEX: for my $invindex ( @{ $self->{indexes} } ) {
 
                     my $check_initial = substr( $check_term, 0, 1 );
 
-                    $debug and warn "seek($check_term)";
+                    $debug and warn " seek($check_term)";
                     $lexicon->seek($check_term);
 
                 TERM: while ( defined( my $term = $lexicon->get_term ) ) {
 
-                        $debug and warn "$check_term -> $term";
+                        $debug and warn "  $check_term -> $term";
 
                         my $initial = substr( $term, 0, 1 );
                         if ( $initial and $initial gt $check_initial ) {
@@ -200,7 +213,11 @@ INDEX: for my $invindex ( @{ $self->{indexes} } ) {
                                 term  => $term,
                             );
                             $debug and warn "ok term=$term [$freq]";
-                            $matches{$term} += $freq;
+                            $matches{
+                                $maxl
+                                ? substr( $term, 0, $maxl )
+                                : $term
+                            } += $freq;
 
                             # abort everything if we've hit our limit
                             if ( scalar( keys %matches ) >= $self->{limit} ) {
@@ -214,7 +231,14 @@ INDEX: for my $invindex ( @{ $self->{indexes} } ) {
                                 term  => $term,
                             );
                             $debug and warn "ok term=$term [$freq]";
-                            $matches{$term} += $freq;
+                            $matches{
+                                $maxl
+                                ? substr(
+                                    $term, index( $term, $check_term, 0 ),
+                                    $maxl
+                                    )
+                                : $term
+                            } += $freq;
 
                             # abort everything if we've hit our limit
                             if ( scalar( keys %matches ) >= $self->{limit} ) {
@@ -224,7 +248,7 @@ INDEX: for my $invindex ( @{ $self->{indexes} } ) {
                         else {
                             $debug
                                 and warn
-                                "No match - skipping to next CHECK term";
+                                " No match - skipping to next CHECK term";
                             next CHECK;
                         }
 
@@ -232,6 +256,16 @@ INDEX: for my $invindex ( @{ $self->{indexes} } ) {
 
                     }
                 }
+            }
+        }
+    }
+
+    # boost phrase matches
+    for my $m ( keys %matches ) {
+        next unless $m =~ m/ /;
+        for my $m2 ( keys %matches ) {
+            if ( $m =~ m/\b\Q$m2\E\b/ ) {
+                $matches{$m} += $matches{$m2};
             }
         }
     }
